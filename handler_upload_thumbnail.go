@@ -1,10 +1,13 @@
 package main
 
 import (
-	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
 	"github.com/google/uuid"
@@ -44,22 +47,30 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 
 	contentType := header.Header.Get("Content-Type")
 
-	content, err := io.ReadAll(file)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
-		return
-	}
-
 	videoMeta, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT", err)
 		return
 	}
 
-	contentString := base64.StdEncoding.EncodeToString(content)
-	dataURL := fmt.Sprintf("data:%v;base64,%v", contentType, contentString)
+	thumbnailName := fmt.Sprintf("%v.%v", videoIDString, strings.Split(contentType, "/")[1])
 
-	videoMeta.ThumbnailURL = &dataURL
+	thumbnailPath := filepath.Join(cfg.assetsRoot, thumbnailName)
+
+	f, err := os.Create(thumbnailPath)
+	if err != nil {
+		log.Fatalf("Failed to create file: %v", err)
+		return
+	}
+
+	_, err = io.Copy(f, file)
+	if err != nil {
+		log.Fatalf("Failed to write file: %v", err)
+		return
+	}
+
+	fileURL := fmt.Sprintf("http://localhost:%v/assets/%v", cfg.port, thumbnailName)
+	videoMeta.ThumbnailURL = &fileURL
 
 	cfg.db.UpdateVideo(videoMeta)
 
